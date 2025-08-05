@@ -1,113 +1,150 @@
 import bpy
 import sys
 import os
+from math import radians
 
-logo_path = "C:/Users/JANE/Documents/dev/projects/blender-logo-render-proj/logo1.svg"
-output_path = "C:/Users/JANE/Documents/dev/projects/blender-logo-render-proj/blender-logo-render/frames/test-run1/frame_"
-
-os.makedirs(os.path.dirname(output_path), exist_ok=True)
+def parse_args():
+    argv = sys.argv
+    argv = argv[argv.index("--") + 1:]  
+    svg_path = argv[0]
+    output_dir = argv[1]
+    texture_type = argv[2].lower()
+    extrude_depth = float(argv[3])
+    bevel_depth = float(argv[4])
+    return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
 
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
-# Import SVG and check if it worked
-try:
-    bpy.ops.import_curve.svg(filepath=logo_path)
-    print(f"SVG import completed. Objects in scene: {[obj.name for obj in bpy.context.scene.objects]}")
-except Exception as e:
-    print(f"Error importing SVG: {e}")
-    sys.exit(1)
+svg_path, output_dir, texture_type, extrude_depth, bevel_depth = parse_args()
 
-# Check if any objects were imported
-if not bpy.context.selected_objects:
-    print("No objects were selected after SVG import. Checking all objects in scene...")
-    imported_objects = [obj for obj in bpy.context.scene.objects if obj.type in ['CURVE', 'MESH']]
-    if imported_objects:
-        print(f"Found imported objects: {[obj.name for obj in imported_objects]}")
-        logo_obj = imported_objects[0]
-        logo_obj.select_set(True)
-        bpy.context.view_layer.objects.active = logo_obj
-    else:
-        print("No objects found in scene. Checking if SVG file exists...")
-        if not os.path.exists(logo_path):
-            print(f"SVG file not found at: {logo_path}")
-        else:
-            print("SVG file exists but no objects were imported. This might be due to SVG content issues.")
-        sys.exit(1)
-else:
-    logo_obj = bpy.context.selected_objects[0]
-    print(f"Selected logo object: {logo_obj.name}")
+bpy.ops.import_curve.svg(filepath=svg_path)
+imported_objs = bpy.context.selected_objects
 
-bpy.context.view_layer.objects.active = logo_obj
-logo_obj.select_set(True)
-
-logo_obj.rotation_euler = (1.5708, 0, 0)  
-
-try:
+def convert_and_extrude(obj, extrude_depth, bevel_depth):
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
     bpy.ops.object.convert(target='MESH')
-    print("Successfully converted curve to mesh")
-except Exception as e:
-    print(f"Error converting to mesh: {e}")
-    sys.exit(1)
+    solidify_mod = obj.modifiers.new(name="Solidify", type='SOLIDIFY')
+    solidify_mod.thickness = extrude_depth
+    bevel_mod = obj.modifiers.new(name="Bevel", type='BEVEL')
+    bevel_mod.width = bevel_depth
+    bevel_mod.segments = 5
 
-bpy.ops.object.select_all(action='DESELECT')
-for obj in bpy.context.selected_objects:
-    obj.select_set(False)
-for obj in bpy.context.scene.objects:
-    if obj.type == 'MESH':
-        obj.select_set(True)
-bpy.ops.object.join()
-logo_obj = bpy.context.active_object
+def create_material(texture_type):
+    mat = bpy.data.materials.new(name=texture_type.capitalize() + "Material")
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
 
-solidify = logo_obj.modifiers.new(name="Solidify", type='SOLIDIFY')
-solidify.thickness = 0.05
-bpy.ops.object.modifier_apply(modifier="Solidify")
+    principled = nodes.get("Principled BSDF")
 
-mat = bpy.data.materials.new(name="ChromeMaterial")
-mat.use_nodes = True
-nodes = mat.node_tree.nodes
-links = mat.node_tree.links
+    if not principled:
+        print("Principled BSDF node not found!")
+        return mat  
 
-for node in nodes:
-    nodes.remove(node)
+    if texture_type == "flat":
+        principled.inputs["Roughness"].default_value = 1.0
+        principled.inputs["Metallic"].default_value = 0.0
+    elif texture_type == "glossy":
+        principled.inputs["Roughness"].default_value = 0.1
+        principled.inputs["Metallic"].default_value = 0.0
+    elif texture_type == "matte":
+        principled.inputs["Roughness"].default_value = 0.8
+        principled.inputs["Metallic"].default_value = 0.0
+    elif texture_type == "metallic":
+        principled.inputs["Roughness"].default_value = 0.3
+        principled.inputs["Metallic"].default_value = 1.0
+    elif texture_type == "chrome":
+        principled.inputs["Roughness"].default_value = 0.05
+        principled.inputs["Metallic"].default_value = 1.0
+    else:
+        principled.inputs["Roughness"].default_value = 0.5  
 
-output_node = nodes.new(type='ShaderNodeOutputMaterial')
-principled_node = nodes.new(type='ShaderNodeBsdfPrincipled')
+    return mat
 
-principled_node.inputs['Metallic'].default_value = 1.0
-principled_node.inputs['Roughness'].default_value = 0.1
-principled_node.inputs['Base Color'].default_value = (0.8, 0.8, 0.8, 1)
+def apply_material(obj, material):
+    if obj.data.materials:
+        obj.data.materials[0] = material
+    else:
+        obj.data.materials.append(material)
 
-links.new(principled_node.outputs['BSDF'], output_node.inputs['Surface'])
+def center_and_scale_objects(target_size=2.0):
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+    bpy.ops.object.location_clear()
+    bpy.ops.object.rotation_clear()
+    bpy.ops.object.scale_clear()
+    # Compute bounding box dimensions
+    max_dim = max(obj.dimensions.length for obj in bpy.context.selected_objects)
 
-logo_obj.data.materials.append(mat)
+    if max_dim != 0:
+        scale_factor = target_size / max_dim
+        bpy.ops.transform.resize(value=(scale_factor, scale_factor, scale_factor))
 
-bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
-logo_obj.location = (0, 0, 0)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-logo_obj.scale = (1, 1, 1)
+def setup_camera():
+    bpy.ops.object.camera_add(location=(0, -10, 3))
+    camera = bpy.context.active_object
+    camera.rotation_euler = (radians(75), 0, 0)
+    bpy.context.scene.camera = camera
 
-bpy.ops.object.camera_add(location=(0, -3, 1), rotation=(1.2, 0, 0))
-camera = bpy.context.object
-bpy.context.scene.camera = camera
+def setup_lighting():
+    # key light
+    bpy.ops.object.light_add(type='AREA', location=(0, -6, 2))
+    key_light = bpy.context.active_object
+    key_light.data.energy = 800
+    key_light.scale = (2, 2, 2)
+    key_light.rotation_euler = (radians(90), 0, 0)  
 
-bpy.ops.object.light_add(type='AREA', location=(2, -2, 2))
-light = bpy.context.object
-light.data.energy = 1000
+    # fill light
+    bpy.ops.object.light_add(type='AREA', location=(3, -6, 2))
+    fill_light = bpy.context.active_object
+    fill_light.data.energy = 200
+    fill_light.scale = (2, 2, 2)
+    fill_light.rotation_euler = (radians(90), 0, radians(-15))  
 
-logo_obj.rotation_euler = (0, 0, 0)
-logo_obj.keyframe_insert(data_path="rotation_euler", frame=1)
-logo_obj.rotation_euler = (0, 0, 6.28319)
-logo_obj.keyframe_insert(data_path="rotation_euler", frame=120)
+    # rim light
+    bpy.ops.object.light_add(type='AREA', location=(0, 4, 3))
+    rim_light = bpy.context.active_object
+    rim_light.data.energy = 200
+    rim_light.scale = (2, 2, 2)
+    rim_light.rotation_euler = (radians(-90), 0, 0)  
 
-bpy.context.scene.render.engine = 'CYCLES'
-bpy.context.scene.cycles.device = 'GPU'
-bpy.context.scene.render.resolution_x = 1920
-bpy.context.scene.render.resolution_y = 1080
-bpy.context.scene.frame_start = 1
-bpy.context.scene.frame_end = 120
-bpy.context.scene.render.film_transparent = True  
-bpy.context.scene.render.filepath = output_path
-bpy.context.scene.render.image_settings.file_format = 'PNG'  
+
+def animate_rotation(obj, duration_frames=240):
+    bpy.context.scene.frame_start = 1
+    bpy.context.scene.frame_end = duration_frames
+    obj.rotation_euler = (0, 0, 0)
+    obj.keyframe_insert(data_path="rotation_euler", frame=1)
+    obj.rotation_euler = (radians(360), 0, 0)
+    obj.keyframe_insert(data_path="rotation_euler", frame=duration_frames)
+
+def configure_render(output_dir):
+    bpy.context.scene.render.engine = 'CYCLES'
+    bpy.context.scene.cycles.samples = 4096
+    bpy.context.scene.render.resolution_x = 1920
+    bpy.context.scene.render.resolution_y = 1080
+    bpy.context.scene.render.fps = 24
+    bpy.context.scene.render.filepath = os.path.join(output_dir, "frame_")
+    bpy.context.scene.render.image_settings.file_format = 'PNG'
+
+def final_set_up(output_dir):
+    setup_camera()
+    setup_lighting()
+    animate_rotation(imported_objs[0])
+    configure_render(output_dir)
+
+# Run processing steps
+for obj in imported_objs:
+    convert_and_extrude(obj, extrude_depth, bevel_depth)
+
+material = create_material(texture_type)
+for obj in imported_objs:
+    apply_material(obj, material)
+
+center_and_scale_objects()
+final_set_up(output_dir)
 
 bpy.ops.render.render(animation=True)
+
+print("Rendering Complete. Output saved to:", bpy.context.scene.render.filepath)
