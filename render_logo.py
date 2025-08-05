@@ -2,8 +2,8 @@ import bpy
 import sys
 import os
 
-logo_path = "C:/Users/JANE/Documents/dev/projects/blender-logo-render/logo.svg"
-output_path = "C:/Users/JANE/Documents/dev/projects/blender-logo-render/frames/frame_"
+logo_path = "C:/Users/JANE/Documents/dev/projects/blender-logo-render-proj/logo1.svg"
+output_path = "C:/Users/JANE/Documents/dev/projects/blender-logo-render-proj/blender-logo-render/frames/test-run1/frame_"
 
 os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
