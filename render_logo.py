@@ -21,6 +21,14 @@ svg_path, output_dir, texture_type, extrude_depth, bevel_depth = parse_args()
 bpy.ops.import_curve.svg(filepath=svg_path)
 imported_objs = bpy.context.selected_objects
 
+# debug
+if not imported_objs:
+    print(f"Error: No objects were imported from {svg_path}")
+    print("Please check if the SVG file exists and contains valid vector data.")
+    sys.exit(1)
+
+print(f"Successfully imported {len(imported_objs)} objects")
+
 def convert_and_extrude(obj, extrude_depth, bevel_depth):
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
@@ -131,7 +139,10 @@ def configure_render(output_dir):
 def final_set_up(output_dir):
     setup_camera()
     setup_lighting()
-    animate_rotation(imported_objs[0])
+    if imported_objs:
+        animate_rotation(imported_objs[0])
+    else:
+        print("Warning: No objects to animate")
     configure_render(output_dir)
 
 # Run processing steps
