@@ -13,10 +13,8 @@ def parse_args():
     texture_type = argv[2].lower()
     extrude_depth = float(argv[3])
     bevel_depth = float(argv[4])
-    hdri_path = argv[5] if len(argv) > 5 else None
     return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
 
-# Clear scene
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
@@ -48,12 +46,10 @@ def convert_and_extrude(obj, extrude_depth, bevel_depth):
         print(f"Converting {obj.name} to mesh...")
         bpy.ops.object.convert(target='MESH')
 
-    # Add Solidify Modifier
     solidify_mod = obj.modifiers.new(name="Solidify", type='SOLIDIFY')
     solidify_mod.thickness = extrude_depth
-    solidify_mod.offset = 0  # Center the extrusion
+    solidify_mod.offset = 0  
 
-    # Add Bevel Modifier for smooth edges
     bevel_mod = obj.modifiers.new(name="Bevel", type='BEVEL')
     bevel_mod.width = bevel_depth
     bevel_mod.segments = 3
@@ -67,13 +63,12 @@ def create_materials(texture_type, num_objects):
         "glossy": (0.1, 0.0), 
         "matte": (0.8, 0.0),
         "metallic": (0.3, 1.0),
-        "chrome": (0.05, 1.0),
+        "chrome": (0.1, 1.0),  
         "golden": (0.2, 1.0),
     }
     
     base_roughness, base_metallic = base_presets.get(texture_type, (0.5, 0.0))
     
-    # Color variations for multiple objects
     if texture_type == "golden":
         colors = [
             (1.000, 0.766, 0.336, 1.0),  # Rich gold
@@ -81,6 +76,14 @@ def create_materials(texture_type, num_objects):
             (0.830, 0.686, 0.215, 1.0),
             (1.000, 0.598, 0.000, 1.0),
             (0.996, 0.882, 0.561, 1.0),
+        ]
+    elif texture_type == "chrome":
+        colors = [
+            (0.95, 0.95, 0.95, 1.0),  # Pure chrome white
+            (0.98, 0.98, 0.98, 1.0),  # Bright chrome
+            (0.92, 0.92, 0.92, 1.0),  # Slightly darker chrome
+            (0.96, 0.96, 0.98, 1.0),  # Cool chrome
+            (0.97, 0.97, 0.95, 1.0),  # Warm chrome
         ]
     else:
         colors = [
@@ -102,7 +105,10 @@ def create_materials(texture_type, num_objects):
         color_index = i % len(colors)
         principled.inputs["Base Color"].default_value = colors[color_index]
         
-        if num_objects > 1:
+        # For chrome, use moderate roughness for liquid flow effect
+        if texture_type == "chrome":
+            principled.inputs["Roughness"].default_value = 0.08 + (i * 0.02)  # Variation for flow effect
+        elif num_objects > 1:
             roughness_variation = (i * 0.1) % 0.3
             principled.inputs["Roughness"].default_value = min(1.0, base_roughness + roughness_variation)
         
@@ -195,7 +201,6 @@ def setup_lighting(texture_type):
     warm_color = (1.0, 0.9, 0.8)
     cool_color = (0.8, 0.9, 1.0)
 
-    # Clear existing lights
     for obj in bpy.data.objects:
         if obj.type == 'LIGHT':
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -206,22 +211,27 @@ def setup_lighting(texture_type):
         rim_light  = add_area_light((0, 6, 3), (radians(-60), 0, 0), 800, 3, color=warm_color)
 
     elif texture_type in ["chrome", "metallic"]:
-        key_light = add_area_light((0, -6, 6), (radians(60), 0, 0), 2500, 6, color=(1.0, 1.0, 1.0))
-        rim_light = add_area_light((0, 6, 5), (radians(-60), 0, 0), 1500, 5, color=(1.0, 1.0, 1.0))
-        fill_light = add_area_light((-5, -3, 2), (radians(40), 0, radians(30)), 800, 4, color=(0.95, 0.95, 1.0))
-        reflector_light = add_area_light((3, 0, 3), (radians(90), 0, radians(90)), 1200, 6, color=(1.0, 1.0, 1.0))
+        key_light = add_area_light((0, -10, 8), (radians(35), 0, 0), 2500, 15, color=(1.0, 1.0, 1.0))
+        fill_light = add_area_light((8, -6, 6), (radians(25), 0, radians(-45)), 1800, 12, color=(0.9, 0.95, 1.0))
+        rim_light = add_area_light((0, 10, 4), (radians(-30), 0, 0), 1500, 12, color=(1.0, 1.0, 1.0))
+        side_light = add_area_light((-8, 0, 5), (radians(45), 0, radians(90)), 1200, 10, color=(0.95, 0.95, 1.0))
 
     else:
         key_light  = add_area_light((0, -6, 4), (radians(60), 0, 0), 1000, 4)
         fill_light = add_area_light((4, -4, 2), (radians(45), 0, radians(-30)), 400, 3)
         rim_light  = add_area_light((0, 6, 3), (radians(-60), 0, 0), 600, 3)
 
-    # Ambient light
     bpy.context.scene.world.use_nodes = True
     world_nodes = bpy.context.scene.world.node_tree.nodes
     bg_node = world_nodes.get('Background')
+
     if bg_node:
-        bg_strength = 0.2 if texture_type in ["gold", "chrome", "metallic"] else 0.1
+        if texture_type in ["chrome", "metallic"]:
+            bg_strength = 0.3 
+        elif texture_type in ["gold", "golden"]:
+            bg_strength = 0.2
+        else:
+            bg_strength = 0.1
         bg_node.inputs[1].default_value = bg_strength
 
 
@@ -284,7 +294,7 @@ print("Configuring render...")
 configure_render(output_dir)
 
 print("Starting render...")
-print(f"Rendering {bpy.context.scene.frame_end} frames...")
+# print(f"Rendering {bpy.context.scene.frame_end} frames...")
 bpy.ops.render.render(animation=True)
 
 print("Rendering Complete!")
@@ -295,4 +305,4 @@ print(f"Materials created: {len(materials)}")
 print("Rendering Complete!")
 print(f"Output saved to: {bpy.context.scene.render.filepath}")
 print(f"Total objects processed: {len(imported_objs)}")
-print(f"Materials created: {len(materials)}")   
+print(f"Materials created: {len(materials)}")
