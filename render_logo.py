@@ -4,25 +4,7 @@ import os
 import mathutils
 from math import radians
 
-def setup_hdri_environment(hdri_path):
-    bpy.context.scene.world.use_nodes = True
-    nodes = bpy.context.scene.world.node_tree.nodes
-    links = bpy.context.scene.world.node_tree.links
 
-    nodes.clear()
-
-    node_environment = nodes.new(type='ShaderNodeTexEnvironment')
-    node_background = nodes.new(type='ShaderNodeBackground')
-    node_output = nodes.new(type='ShaderNodeOutputWorld')
-
-    node_environment.image = bpy.data.images.load(hdri_path)
-
-    links.new(node_environment.outputs['Color'], node_background.inputs['Color'])
-    links.new(node_background.outputs['Background'], node_output.inputs['Surface'])
-
-    print("HDRI environment set up successfully.")
-
-    
 def parse_args():
     argv = sys.argv
     argv = argv[argv.index("--") + 1:]
@@ -31,6 +13,7 @@ def parse_args():
     texture_type = argv[2].lower()
     extrude_depth = float(argv[3])
     bevel_depth = float(argv[4])
+    hdri_path = argv[5] if len(argv) > 5 else None
     return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
 
 # Clear scene
@@ -38,7 +21,6 @@ bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
 svg_path, output_dir, texture_type, extrude_depth, bevel_depth = parse_args()
-
 if not os.path.exists(svg_path):
     print(f"Error: SVG file does not exist at {svg_path}")
     sys.exit(1)
@@ -224,9 +206,10 @@ def setup_lighting(texture_type):
         rim_light  = add_area_light((0, 6, 3), (radians(-60), 0, 0), 800, 3, color=warm_color)
 
     elif texture_type in ["chrome", "metallic"]:
-        key_light  = add_area_light((0, -6, 6), (radians(60), 0, 0), 2000, 6, color=cool_color)
-        fill_light = add_area_light((5, -3, 4), (radians(45), 0, radians(-30)), 800, 4, color=(1.0, 1.0, 1.0))
-        rim_light  = add_area_light((0, 6, 4), (radians(-60), 0, 0), 1000, 4, color=(1.0, 1.0, 1.0))
+        key_light = add_area_light((0, -6, 6), (radians(60), 0, 0), 2500, 6, color=(1.0, 1.0, 1.0))
+        rim_light = add_area_light((0, 6, 5), (radians(-60), 0, 0), 1500, 5, color=(1.0, 1.0, 1.0))
+        fill_light = add_area_light((-5, -3, 2), (radians(40), 0, radians(30)), 800, 4, color=(0.95, 0.95, 1.0))
+        reflector_light = add_area_light((3, 0, 3), (radians(90), 0, radians(90)), 1200, 6, color=(1.0, 1.0, 1.0))
 
     else:
         key_light  = add_area_light((0, -6, 4), (radians(60), 0, 0), 1000, 4)
@@ -269,6 +252,7 @@ def configure_render(output_dir):
     scene.render.filepath = os.path.join(output_dir, "frame_.png")
     scene.render.image_settings.file_format = 'PNG'
     scene.render.image_settings.color_mode = 'RGB'
+    scene.render.film_transparent = True
     
     os.makedirs(output_dir, exist_ok=True)
 
@@ -300,7 +284,7 @@ print("Configuring render...")
 configure_render(output_dir)
 
 print("Starting render...")
-# print(f"Rendering {bpy.context.scene.frame_end} frames...")
+print(f"Rendering {bpy.context.scene.frame_end} frames...")
 bpy.ops.render.render(animation=True)
 
 print("Rendering Complete!")
