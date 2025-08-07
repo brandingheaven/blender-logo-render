@@ -14,6 +14,19 @@ def parse_args():
     return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
 
 # Clear scene
+from math import radians
+
+def parse_args():
+    argv = sys.argv
+    argv = argv[argv.index("--") + 1:]
+    svg_path = argv[0]
+    output_dir = argv[1]
+    texture_type = argv[2].lower()
+    extrude_depth = float(argv[3])
+    bevel_depth = float(argv[4])
+    return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
+
+# Clear scene
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
@@ -247,6 +260,11 @@ configure_render(output_dir)
 print("Starting render...")
 # print(f"Rendering {bpy.context.scene.frame_end} frames...")
 bpy.ops.render.render(animation=True)
+
+print("Rendering Complete!")
+print(f"Output saved to: {bpy.context.scene.render.filepath}")
+print(f"Total objects processed: {len(imported_objs)}")
+print(f"Materials created: {len(materials)}")   
 
 print("Rendering Complete!")
 print(f"Output saved to: {bpy.context.scene.render.filepath}")
