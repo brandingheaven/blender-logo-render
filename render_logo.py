@@ -211,9 +211,10 @@ def configure_render(output_dir):
     scene.render.resolution_y = 1080
     scene.render.fps = 24
     
-    scene.render.filepath = os.path.join(output_dir, "frame_")
-    scene.render.image_settings.file_format = 'PNG'
+    scene.render.filepath = os.path.join(output_dir, "rendered_anim.mp4")
+    scene.render.image_settings.file_format = 'FFMPEG'
     scene.render.image_settings.color_mode = 'RGBA'
+    
     os.makedirs(output_dir, exist_ok=True)
 
 # Main processing pipeline
@@ -244,7 +245,7 @@ print("Configuring render...")
 configure_render(output_dir)
 
 print("Starting render...")
-print(f"Rendering {bpy.context.scene.frame_end} frames...")
+# print(f"Rendering {bpy.context.scene.frame_end} frames...")
 bpy.ops.render.render(animation=True)
 
 print("Rendering Complete!")
