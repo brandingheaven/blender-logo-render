@@ -4,6 +4,25 @@ import os
 import mathutils
 from math import radians
 
+def setup_hdri_environment(hdri_path):
+    bpy.context.scene.world.use_nodes = True
+    nodes = bpy.context.scene.world.node_tree.nodes
+    links = bpy.context.scene.world.node_tree.links
+
+    nodes.clear()
+
+    node_environment = nodes.new(type='ShaderNodeTexEnvironment')
+    node_background = nodes.new(type='ShaderNodeBackground')
+    node_output = nodes.new(type='ShaderNodeOutputWorld')
+
+    node_environment.image = bpy.data.images.load(hdri_path)
+
+    links.new(node_environment.outputs['Color'], node_background.inputs['Color'])
+    links.new(node_background.outputs['Background'], node_output.inputs['Surface'])
+
+    print("HDRI environment set up successfully.")
+
+    
 def parse_args():
     argv = sys.argv
     argv = argv[argv.index("--") + 1:]
@@ -67,18 +86,28 @@ def create_materials(texture_type, num_objects):
         "matte": (0.8, 0.0),
         "metallic": (0.3, 1.0),
         "chrome": (0.05, 1.0),
+        "golden": (0.2, 1.0),
     }
     
     base_roughness, base_metallic = base_presets.get(texture_type, (0.5, 0.0))
     
     # Color variations for multiple objects
-    colors = [
-        (0.8, 0.8, 0.8, 1.0),  # Light gray
-        (0.9, 0.9, 0.9, 1.0),  # White
-        (0.7, 0.7, 0.7, 1.0),  # Medium gray
-        (0.6, 0.6, 0.6, 1.0),  # Dark gray
-        (0.85, 0.85, 0.85, 1.0), # Very light gray
-    ]
+    if texture_type == "golden":
+        colors = [
+            (1.000, 0.766, 0.336, 1.0),  # Rich gold
+            (0.945, 0.776, 0.341, 1.0),
+            (0.830, 0.686, 0.215, 1.0),
+            (1.000, 0.598, 0.000, 1.0),
+            (0.996, 0.882, 0.561, 1.0),
+        ]
+    else:
+        colors = [
+            (0.8, 0.8, 0.8, 1.0),  # Light gray
+            (0.9, 0.9, 0.9, 1.0),  # White
+            (0.7, 0.7, 0.7, 1.0),  # Medium gray
+            (0.6, 0.6, 0.6, 1.0),  # Dark gray
+            (0.85, 0.85, 0.85, 1.0), # Very light gray
+        ]
     
     for i in range(num_objects):
         mat = bpy.data.materials.new(name=f"{texture_type.capitalize()}Material_{i+1}")
@@ -171,25 +200,47 @@ def setup_camera():
     
     return camera
 
-def setup_lighting():
-    def add_area_light(location, rotation, energy, size=3):
+def setup_lighting(texture_type):
+    def add_area_light(location, rotation, energy, size=3, color=(1.0, 1.0, 1.0)):
         bpy.ops.object.light_add(type='AREA', location=location)
         light = bpy.context.active_object
         light.data.energy = energy
         light.scale = (size, size, size)
         light.rotation_euler = rotation
+        light.data.color = color
         return light
 
-    key_light = add_area_light((0, -6, 4), (radians(60), 0, 0), 1000, 4)
-    
-    fill_light = add_area_light((4, -4, 2), (radians(45), 0, radians(-30)), 300, 3)
-    
-    rim_light = add_area_light((0, 6, 3), (radians(-60), 0, 0), 400, 2)    
+    warm_color = (1.0, 0.9, 0.8)
+    cool_color = (0.8, 0.9, 1.0)
+
+    # Clear existing lights
+    for obj in bpy.data.objects:
+        if obj.type == 'LIGHT':
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+    if texture_type in ["gold", "golden"]:
+        key_light  = add_area_light((0, -6, 5), (radians(60), 0, 0), 1400, 5, color=warm_color)
+        fill_light = add_area_light((4, -4, 3), (radians(45), 0, radians(-30)), 500, 3, color=warm_color)
+        rim_light  = add_area_light((0, 6, 3), (radians(-60), 0, 0), 800, 3, color=warm_color)
+
+    elif texture_type in ["chrome", "metallic"]:
+        key_light  = add_area_light((0, -6, 6), (radians(60), 0, 0), 2000, 6, color=cool_color)
+        fill_light = add_area_light((5, -3, 4), (radians(45), 0, radians(-30)), 800, 4, color=(1.0, 1.0, 1.0))
+        rim_light  = add_area_light((0, 6, 4), (radians(-60), 0, 0), 1000, 4, color=(1.0, 1.0, 1.0))
+
+    else:
+        key_light  = add_area_light((0, -6, 4), (radians(60), 0, 0), 1000, 4)
+        fill_light = add_area_light((4, -4, 2), (radians(45), 0, radians(-30)), 400, 3)
+        rim_light  = add_area_light((0, 6, 3), (radians(-60), 0, 0), 600, 3)
+
+    # Ambient light
     bpy.context.scene.world.use_nodes = True
     world_nodes = bpy.context.scene.world.node_tree.nodes
     bg_node = world_nodes.get('Background')
     if bg_node:
-        bg_node.inputs[1].default_value = 0.1  # Subtle ambient light
+        bg_strength = 0.2 if texture_type in ["gold", "chrome", "metallic"] else 0.1
+        bg_node.inputs[1].default_value = bg_strength
+
 
 def animate_rotation(parent_obj, duration_frames=240):
     bpy.context.scene.frame_start = 1
@@ -240,7 +291,7 @@ print("Setting up camera...")
 camera = setup_camera()
 
 print("Setting up lighting...")
-setup_lighting()
+setup_lighting(texture_type)
 
 print("Setting up animation...")
 animate_rotation(parent_object)
