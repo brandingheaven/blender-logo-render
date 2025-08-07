@@ -1,19 +1,7 @@
 import bpy
 import sys
 import os
-from math import radians
-
-def parse_args():
-    argv = sys.argv
-    argv = argv[argv.index("--") + 1:]
-    svg_path = argv[0]
-    output_dir = argv[1]
-    texture_type = argv[2].lower()
-    extrude_depth = float(argv[3])
-    bevel_depth = float(argv[4])
-    return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
-
-# Clear scene
+import mathutils
 from math import radians
 
 def parse_args():
@@ -175,7 +163,10 @@ def setup_camera():
     camera = bpy.context.active_object
     camera.rotation_euler = (radians(70), 0, 0)
     bpy.context.scene.camera = camera
-    
+
+    direction = mathutils.Vector((0, 0, 0)) - camera.location
+    rot_quat = direction.to_track_quat('-Z', 'Y')
+    camera.rotation_euler = rot_quat.to_euler()
     camera.data.lens = 50
     
     return camera
@@ -224,9 +215,9 @@ def configure_render(output_dir):
     scene.render.resolution_y = 1080
     scene.render.fps = 24
     
-    scene.render.filepath = os.path.join(output_dir, "rendered_anim.mp4")
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.image_settings.color_mode = 'RGBA'
+    scene.render.filepath = os.path.join(output_dir, "frame_.png")
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.image_settings.color_mode = 'RGB'
     
     os.makedirs(output_dir, exist_ok=True)
 
