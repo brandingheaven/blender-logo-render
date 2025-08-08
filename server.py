@@ -3,10 +3,10 @@ import base64
 import tempfile
 import subprocess
 import json
+import shutil
 from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 from s3_utils import create_s3_uploader
@@ -16,9 +16,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(title="Blender Logo Render API", version="1.0.0")
-
-# Mount static files directory for serving rendered videos
-app.mount("/output", StaticFiles(directory="output"), name="output")
 
 class RenderRequest(BaseModel):
     logo: str  # base64 encoded image
@@ -42,15 +39,6 @@ async def root():
 async def health_check():
     return {"status": "healthy", "service": "blender-logo-render"}
 
-@app.get("/output/{filename}")
-async def get_output_file(filename: str):
-    """Serve rendered video files"""
-    file_path = os.path.join("output", filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path, media_type="video/mp4")
-    else:
-        raise HTTPException(status_code=404, detail="File not found")
-
 @app.post("/render", response_model=RenderResponse)
 async def render_logo(
     logo: str = Form(...),
@@ -63,6 +51,9 @@ async def render_logo(
     """
     Render a 3D logo with the specified parameters and upload to S3
     """
+    # Create temporary directory for rendering
+    temp_dir = tempfile.mkdtemp()
+    
     try:
         # Validate material - these are the materials supported by render_logo.py
         valid_materials = ["flat", "glossy", "matte", "metallic", "chrome", "golden"]
@@ -99,14 +90,10 @@ async def render_logo(
             temp_file.write(image_data)
             logo_path = temp_file.name
         
-        # Create output directory - use current directory for local development
-        output_dir = os.path.join(os.getcwd(), "output")
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Clear previous output files
-        for file in os.listdir(output_dir):
+        # Clear any previous output files in temp directory
+        for file in os.listdir(temp_dir):
             if file.startswith("frame_") and file.endswith(".png"):
-                os.remove(os.path.join(output_dir, file))
+                os.remove(os.path.join(temp_dir, file))
         
         # Get Blender path - try different locations
         blender_paths = [
@@ -137,7 +124,7 @@ async def render_logo(
         cmd = [
             blender_cmd, "-b", "-P", render_script_path, "--",
             logo_path,
-            output_dir,
+            temp_dir,
             material,
             str(extrude_depth),
             str(bevel_depth)
@@ -150,7 +137,7 @@ async def render_logo(
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
         
-        # Clean up temporary file
+        # Clean up temporary logo file
         os.unlink(logo_path)
         
         if result.returncode != 0:
@@ -158,17 +145,17 @@ async def render_logo(
             print(f"Blender stdout: {result.stdout}")
             raise HTTPException(status_code=500, detail=f"Render failed: {result.stderr}")
         
-        # Check for the rendered MP4 file directly
-        video_path = os.path.join(output_dir, "rendered_animation.mp4")
+        # Check for the rendered MP4 file
+        video_path = os.path.join(temp_dir, "rendered_animation.mp4")
         
         if not os.path.exists(video_path):
             print(f"Video file not found at {video_path}")
-            print(f"Directory contents: {os.listdir(output_dir)}")
+            print(f"Directory contents: {os.listdir(temp_dir)}")
             raise HTTPException(status_code=500, detail="Video file not generated")
         
         print(f"Video file found: {video_path}")
         
-        # Try to upload to S3 if configured
+        # Upload to S3
         s3_uploader = create_s3_uploader()
         if s3_uploader:
             print("Uploading video to S3...")
@@ -186,24 +173,22 @@ async def render_logo(
                 )
             else:
                 print(f"S3 upload failed: {upload_result['error']}")
-                # Fall back to local file serving
-        
-        # Return the local file URL as fallback
-        video_filename = "rendered_animation.mp4"
-        
-        return RenderResponse(
-            status="completed",
-            message="Render completed successfully",
-            output_url=f"/output/{video_filename}"
-        )
+                raise HTTPException(status_code=500, detail=f"S3 upload failed: {upload_result['error']}")
+        else:
+            raise HTTPException(status_code=500, detail="S3 uploader not configured")
         
     except HTTPException:
         raise
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
+    finally:
+        # Clean up temporary directory
+        try:
+            shutil.rmtree(temp_dir)
+            print(f"Cleaned up temporary directory: {temp_dir}")
+        except Exception as e:
+            print(f"Warning: Failed to clean up temporary directory {temp_dir}: {e}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8888)
