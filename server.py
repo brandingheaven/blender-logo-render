@@ -78,7 +78,7 @@ async def render_logo(
             logo_path = temp_file.name
         
         # Create output directory
-        output_dir = "./output"
+        output_dir = "/blender-logo-render/output"
         os.makedirs(output_dir, exist_ok=True)
         
         # Clear previous output files
@@ -112,7 +112,7 @@ async def render_logo(
         
         # Prepare blender command - this matches the render_logo.py script expectations
         cmd = [
-            blender_cmd, "-b", "-P", "./render_logo.py", "--",
+            blender_cmd, "-b", "-P", "/blender-logo-render/render_logo.py", "--",
             logo_path,
             output_dir,
             material,
@@ -148,12 +148,38 @@ async def render_logo(
         # Sort files by frame number
         output_files.sort()
         
-        # Return success response with first frame
-        first_frame = output_files[0]
+        # Create MP4 from frames using ffmpeg
+        video_path = os.path.join(output_dir, "output.mp4")
+        
+        # Build ffmpeg command to create MP4 from PNG frames
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",  # Overwrite output file
+            "-framerate", "24",  # 24 fps
+            "-i", os.path.join(output_dir, "frame_%04d.png"),  # Input pattern
+            "-c:v", "libx264",  # H.264 codec
+            "-pix_fmt", "yuv420p",  # Pixel format for compatibility
+            "-crf", "23",  # Quality setting
+            video_path
+        ]
+        
+        print(f"Creating MP4 with command: {' '.join(ffmpeg_cmd)}")
+        
+        # Run ffmpeg
+        ffmpeg_result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+        
+        if ffmpeg_result.returncode != 0:
+            print(f"FFmpeg failed: {ffmpeg_result.stderr}")
+            raise HTTPException(status_code=500, detail=f"Video creation failed: {ffmpeg_result.stderr}")
+        
+        # Read the MP4 file and convert to base64
+        with open(video_path, "rb") as video_file:
+            video_data = video_file.read()
+            video_base64 = base64.b64encode(video_data).decode('utf-8')
+        
         return RenderResponse(
             status="completed",
             message="Render completed successfully",
-            output_url=f"/output/{first_frame}"
+            output_url=f"data:video/mp4;base64,{video_base64}"
         )
         
     except HTTPException:
@@ -162,19 +188,7 @@ async def render_logo(
         print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-@app.get("/output/{filename}")
-async def get_output_file(filename: str):
-    """
-    Serve rendered output files
-    """
-    output_dir = "./output"
-    file_path = os.path.join(output_dir, filename)
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Return the actual file
-    return FileResponse(file_path, media_type="image/png")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8888)
