@@ -9,8 +9,7 @@ RUN apt-get update && apt-get install -y \
     wget curl bzip2 python3 python3-pip git ffmpeg \
     libx11-6 libxi6 libxxf86vm1 libxcursor1 \
     libxrandr2 libxinerama1 libgl1-mesa-glx libegl1-mesa \
-    libglu1-mesa libxss1 libasound2 \
-    nvidia-cuda-toolkit \
+    libglu1-mesa libxss1 libasound2 libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Blender for ARM64 (or use x86_64 with emulation)
@@ -29,6 +28,7 @@ WORKDIR /workspace
 # Copy application files
 COPY render_logo.py /workspace/render_logo.py
 COPY server.py /workspace/server.py
+COPY test_input.json /workspace/test_input.json
 
 # Create output directory
 RUN mkdir -p /workspace/output

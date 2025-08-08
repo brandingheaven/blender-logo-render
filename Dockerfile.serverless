@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     wget curl bzip2 git ffmpeg xz-utils \
     libx11-6 libxi6 libxxf86vm1 libxcursor1 \
     libxrandr2 libxinerama1 libgl1-mesa-glx libegl1-mesa \
-    libglu1-mesa libxss1 libasound2 \
+    libglu1-mesa libxss1 libasound2 libsm6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Blender
