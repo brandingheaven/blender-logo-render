@@ -33,7 +33,7 @@ COPY server.py /workspace/server.py
 RUN mkdir -p /workspace/output
 
 # Expose port for API
-EXPOSE 8000
+EXPOSE 8888
 
 # Start the API server
 CMD ["python3", "server.py"]

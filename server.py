@@ -81,7 +81,8 @@ async def render_logo(
         
         # Get Blender path - try different locations
         blender_paths = [
-            "/usr/local/bin/blender",
+            "/usr/local/bin/blender",  # Docker container path
+            "/opt/blender-3.6.0-linux-x64/blender",  # Docker container path
             "/Applications/Blender.app/Contents/MacOS/Blender",  # Mac
             "/opt/homebrew/bin/blender",  # Homebrew
             "blender",  # System PATH
@@ -163,4 +164,4 @@ async def get_output_file(filename: str):
     return FileResponse(file_path, media_type="image/png")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8888)
