@@ -262,21 +262,42 @@ def configure_render(output_dir):
     scene.cycles.device = 'GPU'  # Force GPU rendering
     scene.cycles.tile_size = 256  # Larger tiles for GPU
     
-    # Enable CUDA/OptiX for GPU rendering
-    scene.cycles.use_optix = True  # Use OptiX for NVIDIA GPUs
-    scene.cycles.use_cuda = True   # Enable CUDA
+    # Debug GPU detection
+    print("=== GPU Debug Info ===")
+    print(f"Cycles device: {scene.cycles.device}")
     
     # Set GPU compute device
     prefs = bpy.context.preferences
     cycles_prefs = prefs.addons['cycles'].preferences
-    cycles_prefs.compute_device_type = 'CUDA'  # or 'OPTIX' for newer GPUs
+    
+    print(f"Available compute device types: {[d.type for d in cycles_prefs.devices]}")
+    print(f"Number of devices: {len(cycles_prefs.devices)}")
+    
+    # Try different compute device types
+    for compute_type in ['CUDA', 'OPTIX', 'OPENCL']:
+        try:
+            cycles_prefs.compute_device_type = compute_type
+            print(f"Set compute device type to: {compute_type}")
+            break
+        except:
+            print(f"Failed to set compute device type to: {compute_type}")
     
     # Enable all available GPUs
+    enabled_devices = 0
     for device in cycles_prefs.devices:
         device.use = True
-        print(f"Enabled GPU device: {device.name}")
+        enabled_devices += 1
+        print(f"Enabled device: {device.name} (type: {device.type})")
     
-    print("Using GPU rendering with CUDA/OptiX")
+    print(f"Total enabled devices: {enabled_devices}")
+    
+    if enabled_devices == 0:
+        print("WARNING: No GPU devices found! Falling back to CPU")
+        scene.cycles.device = 'CPU'
+    else:
+        print("Using GPU rendering")
+    
+    print("=== End GPU Debug Info ===")
     
     scene.cycles.use_adaptive_sampling = True
     scene.cycles.adaptive_threshold = 0.1
