@@ -57,13 +57,20 @@ async def render_logo(
         
         # Decode base64 image
         try:
+            print(f"Original logo data length: {len(logo)}")
+            print(f"Logo starts with 'data:': {logo.startswith('data:')}")
+            
             # Remove data URL prefix if present
             if logo.startswith('data:'):
                 logo = logo.split(',')[1]
+                print(f"After removing data URL prefix, length: {len(logo)}")
             
             image_data = base64.b64decode(logo)
+            print(f"Successfully decoded base64, image data length: {len(image_data)}")
         except Exception as e:
-            raise HTTPException(status_code=400, detail="Invalid base64 image data")
+            print(f"Base64 decode error: {str(e)}")
+            print(f"Logo data (first 100 chars): {logo[:100]}")
+            raise HTTPException(status_code=400, detail=f"Invalid base64 image data: {str(e)}")
         
         # Create temporary file for the logo
         with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as temp_file:
@@ -88,13 +95,18 @@ async def render_logo(
             "blender",  # System PATH
         ]
         
+        print("Checking Blender paths:")
         blender_cmd = None
         for path in blender_paths:
-            if os.path.exists(path):
+            exists = os.path.exists(path)
+            print(f"  {path}: {'EXISTS' if exists else 'NOT FOUND'}")
+            if exists:
                 blender_cmd = path
+                print(f"Using Blender at: {blender_cmd}")
                 break
         
         if not blender_cmd:
+            print("ERROR: No Blender installation found in any of the expected paths")
             raise HTTPException(status_code=500, detail="Blender not found. Please install Blender.")
         
         # Prepare blender command - this matches the render_logo.py script expectations
