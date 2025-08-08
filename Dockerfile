@@ -19,7 +19,8 @@ RUN wget https://download.blender.org/release/Blender3.6/blender-3.6.0-linux-x64
     && rm blender-3.6.0-linux-x64.tar.xz
 
 # Install Python dependencies
-RUN pip3 install fastapi uvicorn python-multipart aiofiles
+COPY requirements.txt /workspace/requirements.txt
+RUN pip3 install -r /workspace/requirements.txt
 
 # Create workspace directory
 WORKDIR /workspace
