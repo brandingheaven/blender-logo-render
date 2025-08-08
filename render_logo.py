@@ -175,14 +175,10 @@ def apply_materials(materials):
         print(f"Applied material {material.name} to {obj.name}")
 
 def setup_camera():
-    bpy.ops.object.camera_add(location=(0, -8, 2))
+    bpy.ops.object.camera_add(location=(0, -8, 0))
     camera = bpy.context.active_object
-    camera.rotation_euler = (radians(70), 0, 0)
+    camera.rotation_euler = (radians(90), 0, 0)  # Face the logo straight on
     bpy.context.scene.camera = camera
-
-    direction = mathutils.Vector((0, 0, 0)) - camera.location
-    rot_quat = direction.to_track_quat('-Z', 'Y')
-    camera.rotation_euler = rot_quat.to_euler()
     camera.data.lens = 50
     
     return camera
@@ -234,16 +230,20 @@ def setup_lighting(texture_type):
         bg_node.inputs[1].default_value = bg_strength
 
 
-def animate_rotation(parent_obj, duration_frames=60):  # Much shorter animation
+def animate_rotation(parent_obj, duration_frames=60):
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = duration_frames
     parent_obj.animation_data_clear()
+    
+    # Start with logo facing the camera (rotated 90 degrees on X to face forward)
     parent_obj.rotation_euler = (radians(90), 0, 0)
     parent_obj.keyframe_insert(data_path="rotation_euler", frame=1)    
-    parent_obj.rotation_euler = (radians(90), radians(360), 0)
+    
+    # End with logo still facing camera but rotated 360 degrees on Z-axis
+    parent_obj.rotation_euler = (radians(90), 0, radians(360))
     parent_obj.keyframe_insert(data_path="rotation_euler", frame=duration_frames)
     
-    # Set interpolation 
+    # Set interpolation to linear
     if parent_obj.animation_data and parent_obj.animation_data.action:
         for fcurve in parent_obj.animation_data.action.fcurves:
             for keyframe in fcurve.keyframe_points:
