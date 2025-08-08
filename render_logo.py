@@ -289,28 +289,19 @@ def configure_render(output_dir):
         enabled_devices += 1
         print(f"Enabled device: {device.name} (type: {device.type})")
     
-    print(f"Total enabled devices: {enabled_devices}")
+    # Set output to MP4
+    scene.render.image_settings.file_format = 'FFMPEG'
+    scene.render.ffmpeg.format = 'MPEG4'
+    scene.render.ffmpeg.codec = 'H264'
+    scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
     
-    if enabled_devices == 0:
-        print("WARNING: No GPU devices found! Falling back to CPU")
-        scene.cycles.device = 'CPU'
-    else:
-        print("Using GPU rendering")
-    
+    print(f"Render output path: {scene.render.filepath}")
     print("=== End GPU Debug Info ===")
     
     scene.cycles.use_adaptive_sampling = False  # Disable for speed
     scene.cycles.adaptive_threshold = 0.1
     scene.cycles.adaptive_min_samples = 16
     
-    scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.image_settings.color_mode = 'RGB'
-    
-    scene.render.film_transparent = False  
-    
-    scene.render.ffmpeg.format = 'MPEG4'
-    scene.render.ffmpeg.codec = 'H264'
     scene.render.ffmpeg.constant_rate_factor = 'MEDIUM'  # Changed from HIGH for faster encoding
     scene.render.ffmpeg.ffmpeg_preset = 'REALTIME'       # Changed from GOOD for faster encoding
     scene.render.ffmpeg.video_bitrate = 4000             # Reduced from 8000
