@@ -88,6 +88,7 @@ async def render_logo(
         
         # Get Blender path - try different locations
         blender_paths = [
+            "/blender-logo-render/blender-4.5.1-linux-x64/blender",  # Current RunPod path
             "/usr/local/bin/blender",  # Docker container path
             "/opt/blender-3.6.0-linux-x64/blender",  # Docker container path
             "/Applications/Blender.app/Contents/MacOS/Blender",  # Mac
