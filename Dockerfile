@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libx11-6 libxi6 libxxf86vm1 libxcursor1 \
     libxrandr2 libxinerama1 libgl1-mesa-glx libegl1-mesa \
     libglu1-mesa libxss1 libasound2 \
+    nvidia-cuda-toolkit \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Blender for ARM64 (or use x86_64 with emulation)

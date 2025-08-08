@@ -259,14 +259,24 @@ def configure_render(output_dir):
     scene.render.fps = 24
     
     # Optimize Cycles settings for speed
-    try:
-        scene.cycles.device = 'GPU'  # Use GPU if available
-        scene.cycles.tile_size = 256  # Larger tiles for GPU
-        print("Using GPU rendering")
-    except:
-        scene.cycles.device = 'CPU'  # Fallback to CPU
-        scene.cycles.tile_size = 16   # Smaller tiles for CPU
-        print("Using CPU rendering")
+    scene.cycles.device = 'GPU'  # Force GPU rendering
+    scene.cycles.tile_size = 256  # Larger tiles for GPU
+    
+    # Enable CUDA/OptiX for GPU rendering
+    scene.cycles.use_optix = True  # Use OptiX for NVIDIA GPUs
+    scene.cycles.use_cuda = True   # Enable CUDA
+    
+    # Set GPU compute device
+    prefs = bpy.context.preferences
+    cycles_prefs = prefs.addons['cycles'].preferences
+    cycles_prefs.compute_device_type = 'CUDA'  # or 'OPTIX' for newer GPUs
+    
+    # Enable all available GPUs
+    for device in cycles_prefs.devices:
+        device.use = True
+        print(f"Enabled GPU device: {device.name}")
+    
+    print("Using GPU rendering with CUDA/OptiX")
     
     scene.cycles.use_adaptive_sampling = True
     scene.cycles.adaptive_threshold = 0.1
