@@ -191,4 +191,4 @@ async def render_logo(
             print(f"Warning: Failed to clean up temporary directory {temp_dir}: {e}")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
