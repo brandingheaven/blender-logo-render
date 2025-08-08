@@ -4,6 +4,7 @@ import tempfile
 import subprocess
 import os
 import json
+import time
 from typing import Optional
 
 def handler(event):
@@ -23,6 +24,10 @@ def handler(event):
         
         print(f"Processing render with material: {material}")
         print(f"Extrude depth: {extrude_depth}, Bevel depth: {bevel_depth}")
+        
+        # Get timeout from environment variable
+        timeout_seconds = int(os.getenv('BLENDER_TIMEOUT_SECONDS', 1200))  # Default 20 minutes
+        print(f"Using timeout: {timeout_seconds} seconds")
         
         # Validate material
         valid_materials = ["flat", "glossy", "matte", "metallic", "chrome", "golden"]
@@ -84,8 +89,12 @@ def handler(event):
         
         print(f"Starting render with command: {' '.join(cmd)}")
         
-        # Run blender render
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)  # 10 minute timeout
+        # Run blender render with progress monitoring
+        start_time = time.time()
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+        
+        render_time = time.time() - start_time
+        print(f"Render completed in {render_time:.2f} seconds")
         
         # Clean up temporary file
         os.unlink(logo_path)
@@ -106,6 +115,7 @@ def handler(event):
         
         # Sort files by frame number
         output_files.sort()
+        print(f"Found {len(output_files)} output frames")
         
         # Create MP4 from frames using ffmpeg
         video_path = os.path.join(output_dir, "output.mp4")
@@ -142,9 +152,14 @@ def handler(event):
             "status": "completed",
             "message": "Render completed successfully",
             "output_url": f"data:video/mp4;base64,{video_base64}",
-            "video_size_bytes": len(video_data)
+            "video_size_bytes": len(video_data),
+            "render_time_seconds": render_time,
+            "frame_count": len(output_files)
         }
         
+    except subprocess.TimeoutExpired:
+        print(f"Render timed out after {timeout_seconds} seconds")
+        return {"error": f"Render timed out after {timeout_seconds} seconds. Please try with simpler settings or contact support."}
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         return {"error": f"Internal server error: {str(e)}"}
