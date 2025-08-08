@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM ubuntu:22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -6,10 +6,11 @@ ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    wget curl bzip2 git ffmpeg \
+    wget curl bzip2 git ffmpeg xz-utils \
     libx11-6 libxi6 libxxf86vm1 libxcursor1 \
     libxrandr2 libxinerama1 libgl1-mesa-glx libegl1-mesa \
     libglu1-mesa libxss1 libasound2 \
+    python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Blender
@@ -19,7 +20,7 @@ RUN wget https://download.blender.org/release/Blender4.5/blender-4.5.1-linux-x64
     && rm blender-4.5.1-linux-x64.tar.xz
 
 # Install Python dependencies
-RUN pip install --no-cache-dir runpod
+RUN pip3 install --no-cache-dir runpod
 
 # Create workspace directory
 WORKDIR /workspace
