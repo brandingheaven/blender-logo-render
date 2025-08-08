@@ -124,7 +124,7 @@ async def render_logo(
         print(f"Starting render with material: {material}, extrude_depth: {extrude_depth}, bevel_depth: {bevel_depth}")
         print(f"Command: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)  # 20 minute timeout
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
         
         # Clean up temporary file
         os.unlink(logo_path)

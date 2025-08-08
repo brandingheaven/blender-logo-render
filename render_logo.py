@@ -234,7 +234,7 @@ def setup_lighting(texture_type):
         bg_node.inputs[1].default_value = bg_strength
 
 
-def animate_rotation(parent_obj, duration_frames=120):  # Reduced from 240 frames
+def animate_rotation(parent_obj, duration_frames=60):  # Much shorter animation
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = duration_frames
     parent_obj.animation_data_clear()
@@ -252,10 +252,10 @@ def animate_rotation(parent_obj, duration_frames=120):  # Reduced from 240 frame
 def configure_render(output_dir):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 64   # Further reduced for faster rendering
-    scene.cycles.use_denoising = True      
-    scene.render.resolution_x = 960   # Further reduced for faster rendering
-    scene.render.resolution_y = 540   # Further reduced for faster rendering
+    scene.cycles.samples = 32   # Much faster rendering
+    scene.cycles.use_denoising = False  # Disable denoising for speed
+    scene.render.resolution_x = 640   # Much smaller for speed
+    scene.render.resolution_y = 360   # Much smaller for speed
     scene.render.fps = 24
     
     # Optimize Cycles settings for speed
@@ -299,9 +299,9 @@ def configure_render(output_dir):
     
     print("=== End GPU Debug Info ===")
     
-    scene.cycles.use_adaptive_sampling = True
+    scene.cycles.use_adaptive_sampling = False  # Disable for speed
     scene.cycles.adaptive_threshold = 0.1
-    scene.cycles.adaptive_min_samples = 32
+    scene.cycles.adaptive_min_samples = 16
     
     scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
     scene.render.image_settings.file_format = 'FFMPEG'
