@@ -6,10 +6,11 @@ import json
 import subprocess
 import time
 from pathlib import Path
+from s3_utils import create_s3_uploader
 
 def handler(job):
     """
-    RunPod handler for logo rendering
+    RunPod handler for logo rendering with S3 upload
     """
     job_input = job["input"]
     
@@ -20,9 +21,12 @@ def handler(job):
     material = job_input.get("material", "golden")
     extrude_depth = job_input.get("extrude_depth", 0.1)
     bevel_depth = job_input.get("bevel_depth", 0.02)
+    user_id = job_input.get("user_id")
+    job_id = job_input.get("job_id")
     
     print(f"Processing render with material: {material}")
     print(f"Extrude depth: {extrude_depth}, Bevel depth: {bevel_depth}")
+    print(f"User ID: {user_id}, Job ID: {job_id}")
     
     # Set timeout
     timeout = int(os.environ.get("BLENDER_TIMEOUT_SECONDS", 1200))
@@ -73,13 +77,14 @@ def handler(job):
         
         # Look for output files
         output_files = []
+        video_path = None
+        
         for file_path in Path(output_dir).glob("*.mp4"):
-            with open(file_path, "rb") as f:
-                file_data = base64.b64encode(f.read()).decode('utf-8')
-                output_files.append({
-                    "filename": file_path.name,
-                    "data": file_data
-                })
+            video_path = str(file_path)
+            output_files.append({
+                "filename": file_path.name,
+                "path": str(file_path)
+            })
         
         if not output_files:
             print(f"No output files found in {output_dir}")
@@ -88,13 +93,49 @@ def handler(job):
         
         print(f"Successfully generated {len(output_files)} output files")
         
+        # Try to upload to S3 if configured
+        s3_uploader = create_s3_uploader()
+        if s3_uploader and video_path:
+            print("Uploading video to S3...")
+            upload_result = s3_uploader.upload_video_for_user(video_path, user_id, job_id)
+            
+            if upload_result['success']:
+                print(f"Video uploaded to S3: {upload_result['url']}")
+                print(f"S3 Key: {upload_result['s3_key']}")
+                
+                # Cleanup temporary files
+                os.unlink(temp_svg_path)
+                for file_path in Path(output_dir).glob("*"):
+                    os.unlink(file_path)
+                os.rmdir(output_dir)
+                
+                return {
+                    "output_url": upload_result['url'],
+                    "s3_key": upload_result['s3_key'],
+                    "presigned_url": upload_result.get('presigned_url'),
+                    "message": "Render completed and uploaded to S3"
+                }
+            else:
+                print(f"S3 upload failed: {upload_result['error']}")
+                # Continue with base64 encoding as fallback
+        
+        # Fallback: encode files as base64
+        encoded_files = []
+        for file_info in output_files:
+            with open(file_info["path"], "rb") as f:
+                file_data = base64.b64encode(f.read()).decode('utf-8')
+                encoded_files.append({
+                    "filename": file_info["filename"],
+                    "data": file_data
+                })
+        
         # Cleanup
         os.unlink(temp_svg_path)
         for file_path in Path(output_dir).glob("*"):
             os.unlink(file_path)
         os.rmdir(output_dir)
         
-        return {"output": output_files}
+        return {"output": encoded_files}
         
     except subprocess.TimeoutExpired:
         print(f"Render timed out after {timeout} seconds")

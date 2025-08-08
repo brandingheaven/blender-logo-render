@@ -253,7 +253,7 @@ def configure_render(output_dir):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     scene.cycles.samples = 32   # Much faster rendering
-    scene.cycles.use_denoising = False  # Disable denoising for speed
+    scene.cycles.use_denoising = True  # Enabled denoising for better quality
     scene.render.resolution_x = 640   # Much smaller for speed
     scene.render.resolution_y = 360   # Much smaller for speed
     scene.render.fps = 24

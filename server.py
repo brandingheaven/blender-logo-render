@@ -6,10 +6,19 @@ import json
 from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
+from s3_utils import create_s3_uploader
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI(title="Blender Logo Render API", version="1.0.0")
+
+# Mount static files directory for serving rendered videos
+app.mount("/output", StaticFiles(directory="output"), name="output")
 
 class RenderRequest(BaseModel):
     logo: str  # base64 encoded image
@@ -21,6 +30,8 @@ class RenderResponse(BaseModel):
     status: str
     message: str
     output_url: Optional[str] = None
+    s3_key: Optional[str] = None
+    presigned_url: Optional[str] = None
     error: Optional[str] = None
 
 @app.get("/")
@@ -31,15 +42,26 @@ async def root():
 async def health_check():
     return {"status": "healthy", "service": "blender-logo-render"}
 
+@app.get("/output/{filename}")
+async def get_output_file(filename: str):
+    """Serve rendered video files"""
+    file_path = os.path.join("output", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type="video/mp4")
+    else:
+        raise HTTPException(status_code=404, detail="File not found")
+
 @app.post("/render", response_model=RenderResponse)
 async def render_logo(
     logo: str = Form(...),
     material: str = Form("golden"),
     extrude_depth: float = Form(0.1),
-    bevel_depth: float = Form(0.02)
+    bevel_depth: float = Form(0.02),
+    user_id: Optional[str] = Form(None),
+    job_id: Optional[str] = Form(None)
 ):
     """
-    Render a 3D logo with the specified parameters
+    Render a 3D logo with the specified parameters and upload to S3
     """
     try:
         # Validate material - these are the materials supported by render_logo.py
@@ -77,8 +99,8 @@ async def render_logo(
             temp_file.write(image_data)
             logo_path = temp_file.name
         
-        # Create output directory
-        output_dir = "/blender-logo-render/output"
+        # Create output directory - use current directory for local development
+        output_dir = os.path.join(os.getcwd(), "output")
         os.makedirs(output_dir, exist_ok=True)
         
         # Clear previous output files
@@ -111,8 +133,9 @@ async def render_logo(
             raise HTTPException(status_code=500, detail="Blender not found. Please install Blender.")
         
         # Prepare blender command - this matches the render_logo.py script expectations
+        render_script_path = os.path.join(os.getcwd(), "render_logo.py")
         cmd = [
-            blender_cmd, "-b", "-P", "/blender-logo-render/render_logo.py", "--",
+            blender_cmd, "-b", "-P", render_script_path, "--",
             logo_path,
             output_dir,
             material,
@@ -122,6 +145,7 @@ async def render_logo(
         
         # Run blender render
         print(f"Starting render with material: {material}, extrude_depth: {extrude_depth}, bevel_depth: {bevel_depth}")
+        print(f"User ID: {user_id}, Job ID: {job_id}")
         print(f"Command: {' '.join(cmd)}")
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
@@ -134,52 +158,43 @@ async def render_logo(
             print(f"Blender stdout: {result.stdout}")
             raise HTTPException(status_code=500, detail=f"Render failed: {result.stderr}")
         
-        # Find output files
-        output_files = []
-        for file in os.listdir(output_dir):
-            if file.startswith("frame_") and file.endswith(".png"):
-                output_files.append(file)
+        # Check for the rendered MP4 file directly
+        video_path = os.path.join(output_dir, "rendered_animation.mp4")
         
-        if not output_files:
-            print(f"No output files found in {output_dir}")
+        if not os.path.exists(video_path):
+            print(f"Video file not found at {video_path}")
             print(f"Directory contents: {os.listdir(output_dir)}")
-            raise HTTPException(status_code=500, detail="No output files generated")
+            raise HTTPException(status_code=500, detail="Video file not generated")
         
-        # Sort files by frame number
-        output_files.sort()
+        print(f"Video file found: {video_path}")
         
-        # Create MP4 from frames using ffmpeg
-        video_path = os.path.join(output_dir, "output.mp4")
+        # Try to upload to S3 if configured
+        s3_uploader = create_s3_uploader()
+        if s3_uploader:
+            print("Uploading video to S3...")
+            upload_result = s3_uploader.upload_video_for_user(video_path, user_id, job_id)
+            
+            if upload_result['success']:
+                print(f"Video uploaded to S3: {upload_result['url']}")
+                print(f"S3 Key: {upload_result['s3_key']}")
+                return RenderResponse(
+                    status="completed",
+                    message="Render completed successfully and uploaded to S3",
+                    output_url=upload_result['url'],
+                    s3_key=upload_result['s3_key'],
+                    presigned_url=upload_result.get('presigned_url')
+                )
+            else:
+                print(f"S3 upload failed: {upload_result['error']}")
+                # Fall back to local file serving
         
-        # Build ffmpeg command to create MP4 from PNG frames
-        ffmpeg_cmd = [
-            "ffmpeg", "-y",  # Overwrite output file
-            "-framerate", "24",  # 24 fps
-            "-i", os.path.join(output_dir, "frame_%04d.png"),  # Input pattern
-            "-c:v", "libx264",  # H.264 codec
-            "-pix_fmt", "yuv420p",  # Pixel format for compatibility
-            "-crf", "23",  # Quality setting
-            video_path
-        ]
-        
-        print(f"Creating MP4 with command: {' '.join(ffmpeg_cmd)}")
-        
-        # Run ffmpeg
-        ffmpeg_result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
-        
-        if ffmpeg_result.returncode != 0:
-            print(f"FFmpeg failed: {ffmpeg_result.stderr}")
-            raise HTTPException(status_code=500, detail=f"Video creation failed: {ffmpeg_result.stderr}")
-        
-        # Read the MP4 file and convert to base64
-        with open(video_path, "rb") as video_file:
-            video_data = video_file.read()
-            video_base64 = base64.b64encode(video_data).decode('utf-8')
+        # Return the local file URL as fallback
+        video_filename = "rendered_animation.mp4"
         
         return RenderResponse(
             status="completed",
             message="Render completed successfully",
-            output_url=f"data:video/mp4;base64,{video_base64}"
+            output_url=f"/output/{video_filename}"
         )
         
     except HTTPException:
