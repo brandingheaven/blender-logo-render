@@ -234,7 +234,7 @@ def setup_lighting(texture_type):
         bg_node.inputs[1].default_value = bg_strength
 
 
-def animate_rotation(parent_obj, duration_frames=240):
+def animate_rotation(parent_obj, duration_frames=120):  # Reduced from 240 frames
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = duration_frames
     parent_obj.animation_data_clear()
@@ -252,11 +252,25 @@ def animate_rotation(parent_obj, duration_frames=240):
 def configure_render(output_dir):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 4096
+    scene.cycles.samples = 64   # Further reduced for faster rendering
     scene.cycles.use_denoising = True      
-    scene.render.resolution_x = 1920
-    scene.render.resolution_y = 1080
+    scene.render.resolution_x = 960   # Further reduced for faster rendering
+    scene.render.resolution_y = 540   # Further reduced for faster rendering
     scene.render.fps = 24
+    
+    # Optimize Cycles settings for speed
+    try:
+        scene.cycles.device = 'GPU'  # Use GPU if available
+        scene.cycles.tile_size = 256  # Larger tiles for GPU
+        print("Using GPU rendering")
+    except:
+        scene.cycles.device = 'CPU'  # Fallback to CPU
+        scene.cycles.tile_size = 16   # Smaller tiles for CPU
+        print("Using CPU rendering")
+    
+    scene.cycles.use_adaptive_sampling = True
+    scene.cycles.adaptive_threshold = 0.1
+    scene.cycles.adaptive_min_samples = 32
     
     scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
     scene.render.image_settings.file_format = 'FFMPEG'
@@ -266,9 +280,9 @@ def configure_render(output_dir):
     
     scene.render.ffmpeg.format = 'MPEG4'
     scene.render.ffmpeg.codec = 'H264'
-    scene.render.ffmpeg.constant_rate_factor = 'HIGH'  # Options: HIGH, MEDIUM, LOW
-    scene.render.ffmpeg.ffmpeg_preset = 'GOOD'         # Options: BEST, GOOD, REALTIME
-    scene.render.ffmpeg.video_bitrate = 8000           
+    scene.render.ffmpeg.constant_rate_factor = 'MEDIUM'  # Changed from HIGH for faster encoding
+    scene.render.ffmpeg.ffmpeg_preset = 'REALTIME'       # Changed from GOOD for faster encoding
+    scene.render.ffmpeg.video_bitrate = 4000             # Reduced from 8000
     scene.render.ffmpeg.max_b_frames = 2
 
     os.makedirs(output_dir, exist_ok=True)
@@ -301,13 +315,19 @@ print("Configuring render...")
 configure_render(output_dir)
 
 print("Starting render...")
-# print(f"Rendering {bpy.context.scene.frame_end} frames...")
-bpy.ops.render.render(animation=True)
+print(f"Rendering {bpy.context.scene.frame_end} frames at {bpy.context.scene.render.resolution_x}x{bpy.context.scene.render.resolution_y}...")
+print(f"Using {bpy.context.scene.cycles.samples} samples per frame...")
 
-print("Rendering Complete!")
-print(f"Output saved to: {bpy.context.scene.render.filepath}")
-print(f"Total objects processed: {len(imported_objs)}")
-print(f"Materials created: {len(materials)}")   
+# Add progress callback
+def render_progress(scene):
+    if scene.frame_current % 10 == 0:  # Print every 10 frames
+        progress = (scene.frame_current - scene.frame_start) / (scene.frame_end - scene.frame_start) * 100
+        print(f"Rendering progress: {progress:.1f}% (Frame {scene.frame_current}/{scene.frame_end})")
+
+# Register the callback
+bpy.app.handlers.render_pre.append(render_progress)
+
+bpy.ops.render.render(animation=True)
 
 print("Rendering Complete!")
 print(f"Output saved to: {bpy.context.scene.render.filepath}")

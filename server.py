@@ -71,7 +71,7 @@ async def render_logo(
             logo_path = temp_file.name
         
         # Create output directory
-        output_dir = "/workspace/output"
+        output_dir = "./output"
         os.makedirs(output_dir, exist_ok=True)
         
         # Clear previous output files
@@ -79,9 +79,25 @@ async def render_logo(
             if file.startswith("frame_") and file.endswith(".png"):
                 os.remove(os.path.join(output_dir, file))
         
+        # Get Blender path - try different locations
+        blender_paths = [
+            "/Applications/Blender.app/Contents/MacOS/Blender",  # Mac
+            "/opt/homebrew/bin/blender",  # Homebrew
+            "blender",  # System PATH
+        ]
+        
+        blender_cmd = None
+        for path in blender_paths:
+            if os.path.exists(path):
+                blender_cmd = path
+                break
+        
+        if not blender_cmd:
+            raise HTTPException(status_code=500, detail="Blender not found. Please install Blender.")
+        
         # Prepare blender command - this matches the render_logo.py script expectations
         cmd = [
-            "blender", "-b", "-P", "/workspace/render_logo.py", "--",
+            blender_cmd, "-b", "-P", "./render_logo.py", "--",
             logo_path,
             output_dir,
             material,
@@ -93,7 +109,7 @@ async def render_logo(
         print(f"Starting render with material: {material}, extrude_depth: {extrude_depth}, bevel_depth: {bevel_depth}")
         print(f"Command: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)  # 20 minute timeout
         
         # Clean up temporary file
         os.unlink(logo_path)
@@ -136,7 +152,7 @@ async def get_output_file(filename: str):
     """
     Serve rendered output files
     """
-    output_dir = "/workspace/output"
+    output_dir = "./output"
     file_path = os.path.join(output_dir, filename)
     
     if not os.path.exists(file_path):
@@ -146,4 +162,4 @@ async def get_output_file(filename: str):
     return FileResponse(file_path, media_type="image/png")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8003)
