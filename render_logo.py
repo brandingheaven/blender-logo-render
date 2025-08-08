@@ -71,7 +71,7 @@ def create_materials(texture_type, num_objects):
     
     if texture_type == "golden":
         colors = [
-            (1.000, 0.766, 0.336, 1.0),  # Rich gold
+            (1.000, 0.766, 0.336, 1.0),  
             (0.945, 0.776, 0.341, 1.0),
             (0.830, 0.686, 0.215, 1.0),
             (1.000, 0.598, 0.000, 1.0),
@@ -105,7 +105,6 @@ def create_materials(texture_type, num_objects):
         color_index = i % len(colors)
         principled.inputs["Base Color"].default_value = colors[color_index]
         
-        # For chrome, use moderate roughness for liquid flow effect
         if texture_type == "chrome":
             principled.inputs["Roughness"].default_value = 0.08 + (i * 0.02)  # Variation for flow effect
         elif num_objects > 1:
@@ -259,11 +258,19 @@ def configure_render(output_dir):
     scene.render.resolution_y = 1080
     scene.render.fps = 24
     
-    scene.render.filepath = os.path.join(output_dir, "frame_.png")
-    scene.render.image_settings.file_format = 'PNG'
+    scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
+    scene.render.image_settings.file_format = 'FFMPEG'
     scene.render.image_settings.color_mode = 'RGB'
-    scene.render.film_transparent = True
     
+    scene.render.film_transparent = False  
+    
+    scene.render.ffmpeg.format = 'MPEG4'
+    scene.render.ffmpeg.codec = 'H264'
+    scene.render.ffmpeg.constant_rate_factor = 'HIGH'  # Options: HIGH, MEDIUM, LOW
+    scene.render.ffmpeg.ffmpeg_preset = 'GOOD'         # Options: BEST, GOOD, REALTIME
+    scene.render.ffmpeg.video_bitrate = 8000           
+    scene.render.ffmpeg.max_b_frames = 2
+
     os.makedirs(output_dir, exist_ok=True)
 
 # Main processing pipeline
