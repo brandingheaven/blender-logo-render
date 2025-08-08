@@ -162,4 +162,4 @@ async def get_output_file(filename: str):
     return FileResponse(file_path, media_type="image/png")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8003)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
