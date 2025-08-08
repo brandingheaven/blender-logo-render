@@ -81,6 +81,7 @@ async def render_logo(
         
         # Get Blender path - try different locations
         blender_paths = [
+            "/usr/local/bin/blender",
             "/Applications/Blender.app/Contents/MacOS/Blender",  # Mac
             "/opt/homebrew/bin/blender",  # Homebrew
             "blender",  # System PATH
