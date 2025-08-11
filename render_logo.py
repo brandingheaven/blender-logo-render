@@ -13,12 +13,14 @@ def parse_args():
     texture_type = argv[2].lower()
     extrude_depth = float(argv[3])
     bevel_depth = float(argv[4])
-    return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
+    transparency = argv[5].lower() if len(argv) > 5 else "opaque"
+    return svg_path, output_dir, texture_type, extrude_depth, bevel_depth, transparency
+
 
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
-svg_path, output_dir, texture_type, extrude_depth, bevel_depth = parse_args()
+svg_path, output_dir, texture_type, extrude_depth, bevel_depth, transparency = parse_args()
 if not os.path.exists(svg_path):
     print(f"Error: SVG file does not exist at {svg_path}")
     sys.exit(1)
@@ -247,64 +249,53 @@ def animate_rotation(parent_obj, duration_frames=240):
             for keyframe in fcurve.keyframe_points:
                 keyframe.interpolation = 'LINEAR'
 
-def configure_render(output_dir):
+def configure_render(output_dir, transparency="opaque"):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 2048   
-    scene.cycles.use_denoising = True  # Disable denoising for speed
-    scene.render.resolution_x = 1920   
-    scene.render.resolution_y = 1080   
+    scene.cycles.samples = 2048
+    scene.cycles.use_denoising = True
+    scene.render.resolution_x = 1920
+    scene.render.resolution_y = 1080
     scene.render.fps = 30
-    
-    # Optimize Cycles settings for speed
-    scene.cycles.device = 'GPU'  # Force GPU rendering
-    scene.cycles.tile_size = 128  # Larger tiles for GPU
-    
-    # Debug GPU detection
-    print("=== GPU Debug Info ===")
-    print(f"Cycles device: {scene.cycles.device}")
-    
+
+    # GPU settings
+    scene.cycles.device = 'GPU'
+    scene.cycles.tile_size = 128
     prefs = bpy.context.preferences
     cycles_prefs = prefs.addons['cycles'].preferences
-    
-    print(f"Available compute device types: {[d.type for d in cycles_prefs.devices]}")
-    print(f"Number of devices: {len(cycles_prefs.devices)}")
-    
-    # Try different compute device types
     for compute_type in ['CUDA', 'OPTIX', 'OPENCL']:
         try:
             cycles_prefs.compute_device_type = compute_type
-            print(f"Set compute device type to: {compute_type}")
             break
         except:
-            print(f"Failed to set compute device type to: {compute_type}")
-    
-    # Enable all available GPUs
-    enabled_devices = 0
+            pass
     for device in cycles_prefs.devices:
         device.use = True
-        enabled_devices += 1
-        print(f"Enabled device: {device.name} (type: {device.type})")
-    
-    # Set output to MP4
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.ffmpeg.format = 'MPEG4'
-    scene.render.ffmpeg.codec = 'H264'
-    scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
-    
-    print(f"Render output path: {scene.render.filepath}")
-    print("=== End GPU Debug Info ===")
-    
-    scene.cycles.use_adaptive_sampling = True  # Disable for speed
+
+    # Output settings based on transparency
+    if transparency == "transparent":
+        scene.render.film_transparent = True
+        scene.render.image_settings.file_format = 'FFMPEG'
+        scene.render.image_settings.color_mode = 'RGBA'
+        scene.render.ffmpeg.format = 'WEBM'
+        scene.render.ffmpeg.codec = 'VP9'
+        scene.render.filepath = os.path.join(output_dir, "rendered_animation.webm")
+    else:
+        scene.render.film_transparent = False
+        scene.render.image_settings.file_format = 'FFMPEG'
+        scene.render.image_settings.color_mode = 'RGB'
+        scene.render.ffmpeg.format = 'MPEG4'
+        scene.render.ffmpeg.codec = 'H264'
+        scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
+
+    # Adaptive sampling
+    scene.cycles.use_adaptive_sampling = True
     scene.cycles.adaptive_threshold = 0.01
     scene.cycles.adaptive_min_samples = 64
-    
-    scene.render.ffmpeg.constant_rate_factor = 'HIGH'  # Changed from HIGH for faster encoding
-    scene.render.ffmpeg.ffmpeg_preset = 'BEST'       # Changed from GOOD for faster encoding
-    scene.render.ffmpeg.video_bitrate = 10000             # Reduced from 8000
-    scene.render.ffmpeg.max_b_frames = 4
 
     os.makedirs(output_dir, exist_ok=True)
+    print(f"Render output path: {scene.render.filepath}")
+
 
 # Main processing pipeline
 print("Processing objects...")
