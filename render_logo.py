@@ -106,7 +106,7 @@ def create_materials(texture_type, num_objects):
         principled.inputs["Base Color"].default_value = colors[color_index]
         
         if texture_type == "chrome":
-            principled.inputs["Roughness"].default_value = 0.08 + (i * 0.02)  # Variation for flow effect
+            principled.inputs["Roughness"].default_value = 0.08 + (i * 0.02)  
         elif num_objects > 1:
             roughness_variation = (i * 0.1) % 0.3
             principled.inputs["Roughness"].default_value = min(1.0, base_roughness + roughness_variation)
@@ -177,7 +177,7 @@ def apply_materials(materials):
 def setup_camera():
     bpy.ops.object.camera_add(location=(0, -8, 0))
     camera = bpy.context.active_object
-    camera.rotation_euler = (radians(90), 0, 0)  # Face the logo straight on
+    camera.rotation_euler = (radians(90), 0, 0)  
     bpy.context.scene.camera = camera
     camera.data.lens = 50
     
@@ -230,16 +230,14 @@ def setup_lighting(texture_type):
         bg_node.inputs[1].default_value = bg_strength
 
 
-def animate_rotation(parent_obj, duration_frames=60):
+def animate_rotation(parent_obj, duration_frames=240): 
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = duration_frames
     parent_obj.animation_data_clear()
     
-    # Start with logo facing the camera (rotated 90 degrees on X to face forward)
     parent_obj.rotation_euler = (radians(90), 0, 0)
     parent_obj.keyframe_insert(data_path="rotation_euler", frame=1)    
     
-    # End with logo still facing camera but rotated 360 degrees on Z-axis
     parent_obj.rotation_euler = (radians(90), 0, radians(360))
     parent_obj.keyframe_insert(data_path="rotation_euler", frame=duration_frames)
     
@@ -252,21 +250,20 @@ def animate_rotation(parent_obj, duration_frames=60):
 def configure_render(output_dir):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 32   # Much faster rendering
-    scene.cycles.use_denoising = False  # Disable denoising for speed
-    scene.render.resolution_x = 640   # Much smaller for speed
-    scene.render.resolution_y = 360   # Much smaller for speed
-    scene.render.fps = 24
+    scene.cycles.samples = 2048   
+    scene.cycles.use_denoising = True  # Disable denoising for speed
+    scene.render.resolution_x = 1920   
+    scene.render.resolution_y = 1080   
+    scene.render.fps = 30
     
     # Optimize Cycles settings for speed
     scene.cycles.device = 'GPU'  # Force GPU rendering
-    scene.cycles.tile_size = 256  # Larger tiles for GPU
+    scene.cycles.tile_size = 128  # Larger tiles for GPU
     
     # Debug GPU detection
     print("=== GPU Debug Info ===")
     print(f"Cycles device: {scene.cycles.device}")
     
-    # Set GPU compute device
     prefs = bpy.context.preferences
     cycles_prefs = prefs.addons['cycles'].preferences
     
@@ -298,14 +295,14 @@ def configure_render(output_dir):
     print(f"Render output path: {scene.render.filepath}")
     print("=== End GPU Debug Info ===")
     
-    scene.cycles.use_adaptive_sampling = False  # Disable for speed
-    scene.cycles.adaptive_threshold = 0.1
-    scene.cycles.adaptive_min_samples = 16
+    scene.cycles.use_adaptive_sampling = True  # Disable for speed
+    scene.cycles.adaptive_threshold = 0.01
+    scene.cycles.adaptive_min_samples = 64
     
-    scene.render.ffmpeg.constant_rate_factor = 'MEDIUM'  # Changed from HIGH for faster encoding
-    scene.render.ffmpeg.ffmpeg_preset = 'REALTIME'       # Changed from GOOD for faster encoding
-    scene.render.ffmpeg.video_bitrate = 4000             # Reduced from 8000
-    scene.render.ffmpeg.max_b_frames = 2
+    scene.render.ffmpeg.constant_rate_factor = 'HIGH'  # Changed from HIGH for faster encoding
+    scene.render.ffmpeg.ffmpeg_preset = 'BEST'       # Changed from GOOD for faster encoding
+    scene.render.ffmpeg.video_bitrate = 10000             # Reduced from 8000
+    scene.render.ffmpeg.max_b_frames = 4
 
     os.makedirs(output_dir, exist_ok=True)
 
