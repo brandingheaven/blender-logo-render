@@ -249,13 +249,24 @@ def animate_rotation(parent_obj, duration_frames=240):
             for keyframe in fcurve.keyframe_points:
                 keyframe.interpolation = 'LINEAR'
 
-def configure_render(output_dir, transparency="opaque"):
+def configure_render(output_dir, transparency="opaque", quality_mode="final"):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 2048
+
+    if quality_mode == "preview":
+        scene.cycles.samples = 256
+        scene.render.resolution_x = 1280
+        scene.render.resolution_y = 720
+        scene.cycles.adaptive_threshold = 0.05
+        ffmpeg_preset = 'GOOD'
+    else:  # "final"
+        scene.cycles.samples = 2048
+        scene.render.resolution_x = 1920
+        scene.render.resolution_y = 1080
+        scene.cycles.adaptive_threshold = 0.01
+        ffmpeg_preset = 'SLOW'
+
     scene.cycles.use_denoising = True
-    scene.render.resolution_x = 1920
-    scene.render.resolution_y = 1080
     scene.render.fps = 30
 
     # GPU settings
@@ -288,13 +299,13 @@ def configure_render(output_dir, transparency="opaque"):
         scene.render.ffmpeg.codec = 'H264'
         scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
 
-    # Adaptive sampling
     scene.cycles.use_adaptive_sampling = True
-    scene.cycles.adaptive_threshold = 0.01
     scene.cycles.adaptive_min_samples = 64
+    scene.render.ffmpeg.ffmpeg_preset = ffmpeg_preset
 
     os.makedirs(output_dir, exist_ok=True)
     print(f"Render output path: {scene.render.filepath}")
+    print(f"Render mode: {quality_mode}")
 
 
 # Main processing pipeline
@@ -322,7 +333,9 @@ print("Setting up animation...")
 animate_rotation(parent_object)
 
 print("Configuring render...")
-configure_render(output_dir)
+configure_render(output_dir,quality_mode="preview") # quick tests
+
+
 
 print("Starting render...")
 print(f"Rendering {bpy.context.scene.frame_end} frames at {bpy.context.scene.render.resolution_x}x{bpy.context.scene.render.resolution_y}...")
