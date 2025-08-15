@@ -34,7 +34,7 @@ COPY test_input.json /workspace/test_input.json
 RUN mkdir -p /workspace/output
 
 # Expose port for API
-EXPOSE 8888
+EXPOSE 8000
 
 # Start the API server
 CMD ["python3", "server.py"]

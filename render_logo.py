@@ -250,11 +250,11 @@ def animate_rotation(parent_obj, duration_frames=240):
 def configure_render(output_dir):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 2048   
-    scene.cycles.use_denoising = True  # Disable denoising for speed
-    scene.render.resolution_x = 1920   
-    scene.render.resolution_y = 1080   
-    scene.render.fps = 30
+    scene.cycles.samples = 32   # Much faster rendering
+    scene.cycles.use_denoising = True  # Enabled denoising for better quality
+    scene.render.resolution_x = 640   # Much smaller for speed
+    scene.render.resolution_y = 360   # Much smaller for speed
+    scene.render.fps = 24
     
     # Optimize Cycles settings for speed
     scene.cycles.device = 'GPU'  # Force GPU rendering
