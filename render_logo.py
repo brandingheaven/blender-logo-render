@@ -3,8 +3,12 @@ import sys
 import os
 import mathutils
 from math import radians
+import subprocess
 
 
+
+
+    
 def parse_args():
     argv = sys.argv
     argv = argv[argv.index("--") + 1:]
@@ -13,12 +17,16 @@ def parse_args():
     texture_type = argv[2].lower()
     extrude_depth = float(argv[3])
     bevel_depth = float(argv[4])
-    return svg_path, output_dir, texture_type, extrude_depth, bevel_depth
+    transparency = argv[5].lower() if len(argv) > 5 else "opaque"
+    return svg_path, output_dir, texture_type, extrude_depth, bevel_depth, transparency
+
 
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
-svg_path, output_dir, texture_type, extrude_depth, bevel_depth = parse_args()
+svg_path, output_dir, texture_type, extrude_depth, bevel_depth, transparency = parse_args()
+
+
 if not os.path.exists(svg_path):
     print(f"Error: SVG file does not exist at {svg_path}")
     sys.exit(1)
@@ -136,7 +144,6 @@ def transform_objects(target_size=2.0):
     for obj in imported_objs:
         obj.select_set(True)
     
-    # Set origins to geometry
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
     
     # Reset transforms
@@ -182,6 +189,25 @@ def setup_camera():
     camera.data.lens = 50
     
     return camera
+
+def setup_transparent_world():
+    """Ensure world background is completely transparent"""
+    scene = bpy.context.scene
+    
+    # Enable world nodes
+    scene.world.use_nodes = True
+    world_nodes = scene.world.node_tree.nodes
+    
+    # Get or create background node
+    bg_node = world_nodes.get('Background')
+    if not bg_node:
+        bg_node = world_nodes.new(type='ShaderNodeBackground')
+    
+    # Set background to transparent
+    bg_node.inputs['Color'].default_value = (0.0, 0.0, 0.0, 0.0)  # RGBA with 0 alpha
+    bg_node.inputs['Strength'].default_value = 0.0  # No emission
+    
+    print("World background set to transparent")
 
 def setup_lighting(texture_type):
     def add_area_light(location, rotation, energy, size=3, color=(1.0, 1.0, 1.0)):
@@ -230,7 +256,7 @@ def setup_lighting(texture_type):
         bg_node.inputs[1].default_value = bg_strength
 
 
-def animate_rotation(parent_obj, duration_frames=240): 
+def animate_rotation(parent_obj, duration_frames=120): 
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = duration_frames
     parent_obj.animation_data_clear()
@@ -247,64 +273,161 @@ def animate_rotation(parent_obj, duration_frames=240):
             for keyframe in fcurve.keyframe_points:
                 keyframe.interpolation = 'LINEAR'
 
-def configure_render(output_dir):
+def configure_render(output_dir, transparency="opaque", quality_mode="final"):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 32   # Much faster rendering
-    scene.cycles.use_denoising = True  # Enabled denoising for better quality
-    scene.render.resolution_x = 640   # Much smaller for speed
-    scene.render.resolution_y = 360   # Much smaller for speed
-    scene.render.fps = 24
-    
-    # Optimize Cycles settings for speed
-    scene.cycles.device = 'GPU'  # Force GPU rendering
-    scene.cycles.tile_size = 128  # Larger tiles for GPU
-    
-    # Debug GPU detection
-    print("=== GPU Debug Info ===")
-    print(f"Cycles device: {scene.cycles.device}")
-    
+
+    if quality_mode == "preview":
+        scene.cycles.samples = 256
+        scene.render.resolution_x = 1280
+        scene.render.resolution_y = 720
+        scene.cycles.adaptive_threshold = 0.05
+        ffmpeg_preset = 'GOOD'
+    else:  # "final"
+        scene.cycles.samples = 2048
+        scene.render.resolution_x = 1920
+        scene.render.resolution_y = 1080
+        scene.cycles.adaptive_threshold = 0.01
+        ffmpeg_preset = 'BEST'
+
+    scene.cycles.use_denoising = True
+    scene.render.fps = 30
+
+    # GPU settings
+    scene.cycles.device = 'GPU'
+    scene.cycles.tile_size = 128
     prefs = bpy.context.preferences
     cycles_prefs = prefs.addons['cycles'].preferences
-    
-    print(f"Available compute device types: {[d.type for d in cycles_prefs.devices]}")
-    print(f"Number of devices: {len(cycles_prefs.devices)}")
-    
-    # Try different compute device types
     for compute_type in ['CUDA', 'OPTIX', 'OPENCL']:
         try:
             cycles_prefs.compute_device_type = compute_type
-            print(f"Set compute device type to: {compute_type}")
             break
         except:
-            print(f"Failed to set compute device type to: {compute_type}")
-    
-    # Enable all available GPUs
-    enabled_devices = 0
+            pass
     for device in cycles_prefs.devices:
         device.use = True
-        enabled_devices += 1
-        print(f"Enabled device: {device.name} (type: {device.type})")
-    
-    # Set output to MP4
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.ffmpeg.format = 'MPEG4'
-    scene.render.ffmpeg.codec = 'H264'
-    scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
-    
-    print(f"Render output path: {scene.render.filepath}")
-    print("=== End GPU Debug Info ===")
-    
-    scene.cycles.use_adaptive_sampling = True  # Disable for speed
-    scene.cycles.adaptive_threshold = 0.01
+
+    # Transparency or not
+    if transparency == "transparent":
+        scene.render.film_transparent = True
+        
+        scene.render.image_settings.file_format = 'PNG'
+        scene.render.image_settings.color_mode = 'RGBA'
+        scene.render.image_settings.color_depth = '16'
+        scene.render.image_settings.compression = 15
+        
+        scene.render.filepath = os.path.join(output_dir, "frame_")
+        
+        print(f"PNG sequence will be saved as: {scene.render.filepath}####.png")
+
+    else:
+        scene.render.film_transparent = False
+        scene.render.image_settings.file_format = 'FFMPEG'
+        scene.render.image_settings.color_mode = 'RGB'
+        scene.render.ffmpeg.format = 'MPEG4'
+        scene.render.ffmpeg.codec = 'H264'
+        scene.render.ffmpeg.constant_rate_factor = 'HIGH'
+        scene.render.ffmpeg.audio_codec = 'NONE'
+        
+        scene.render.filepath = os.path.join(output_dir, "rendered_animation.mp4")
+
+    scene.cycles.use_adaptive_sampling = True
     scene.cycles.adaptive_min_samples = 64
-    
-    scene.render.ffmpeg.constant_rate_factor = 'HIGH'  # Changed from HIGH for faster encoding
-    scene.render.ffmpeg.ffmpeg_preset = 'BEST'       # Changed from GOOD for faster encoding
-    scene.render.ffmpeg.video_bitrate = 10000             # Reduced from 8000
-    scene.render.ffmpeg.max_b_frames = 4
+    scene.render.ffmpeg.ffmpeg_preset = ffmpeg_preset
 
     os.makedirs(output_dir, exist_ok=True)
+
+
+    print(f"Render output path: {scene.render.filepath}")
+    print(f"Render mode: {quality_mode}")
+    print(f"Transparency: {transparency}")
+
+
+def convert_png_to_webm(output_dir, fps=30):
+    
+    # Check if FFmpeg is available
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("ERROR: FFmpeg not found! Please install FFmpeg to convert PNG sequence to WEBM.")
+        print("PNG sequence remains at:", os.path.join(output_dir, "frame_*.png"))
+        return False
+    
+    # Convert to absolute path and normalize
+    output_dir = os.path.abspath(output_dir)
+    
+    # Check what PNG files actually exist
+    import glob
+    png_files = glob.glob(os.path.join(output_dir, "frame_*.png"))
+    if not png_files:
+        print(f"No PNG files found in {output_dir}")
+        return False
+    
+    print(f"Found {len(png_files)} PNG files")
+    png_files.sort()  
+    
+    input_pattern = os.path.join(output_dir, "frame_%04d.png").replace('\\', '/')
+    output_path = os.path.join(output_dir, "rendered_animation_transparent.webm")
+    
+    cmd = [
+        'ffmpeg',
+        '-y',
+        '-framerate', str(fps),
+        '-i', input_pattern,
+        '-c:v', 'libvpx-vp9',
+        '-pix_fmt', 'yuva420p',
+        '-crf', '20',
+        '-b:v', '0',
+        '-auto-alt-ref', '0',
+        output_path
+    ]
+    
+    print("Converting PNG sequence to transparent WEBM...")
+    print(f"Input pattern: {input_pattern}")
+    print(f"Output: {output_path}")
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0:
+            print("Conversion succeeded!")
+            
+            # FIXED: Proper verification command that just probes the file
+            verify_cmd = ['ffprobe', '-v', 'quiet', '-show_streams', '-select_streams', 'v:0', output_path]
+            try:
+                verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
+                if 'pix_fmt=yuva420p' in verify_result.stdout or 'alpha_mode=1' in verify_result.stdout:
+                    print("Verified: Output contains alpha channel")
+                else:
+                    print("ℹAlpha channel status unclear from probe, but WebM was created successfully")
+            except:
+                # Fallback: if ffprobe isn't available, just check if file exists and has reasonable size
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+                    print("WebM file created successfully (alpha verification skipped)")
+            
+            # Optionally clean up PNG files
+            response = input("Delete PNG sequence files? (y/n): ").lower().strip()
+            if response == 'y':
+                for png_file in png_files:
+                    try:
+                        os.remove(png_file)
+                        print(f"Deleted: {os.path.basename(png_file)}")
+                    except OSError:
+                        pass
+                print("PNG cleanup completed.")
+            
+            return True
+        else:
+            print("Conversion failed:")
+            print("STDERR:", result.stderr[-300:])
+            
+    except subprocess.TimeoutExpired:
+        print("Conversion timed out!")
+    except Exception as e:
+        print(f"Conversion error: {e}")
+    
+    return False
+
 
 # Main processing pipeline
 print("Processing objects...")
@@ -331,11 +454,21 @@ print("Setting up animation...")
 animate_rotation(parent_object)
 
 print("Configuring render...")
-configure_render(output_dir)
+configure_render(output_dir) # quick tests
+
+
 
 print("Starting render...")
 print(f"Rendering {bpy.context.scene.frame_end} frames at {bpy.context.scene.render.resolution_x}x{bpy.context.scene.render.resolution_y}...")
 print(f"Using {bpy.context.scene.cycles.samples} samples per frame...")
+print(f"Output format: {bpy.context.scene.render.image_settings.file_format}")
+print(f"Color mode: {bpy.context.scene.render.image_settings.color_mode}")
+print(f"Film transparent: {bpy.context.scene.render.film_transparent}")
+print(f"Render filepath: {bpy.context.scene.render.filepath}")
+
+# Ensure output directory exists
+os.makedirs(output_dir, exist_ok=True)
+print(f"Output directory created/exists: {os.path.abspath(output_dir)}")
 
 # Add progress callback
 def render_progress(scene):
@@ -349,6 +482,33 @@ bpy.app.handlers.render_pre.append(render_progress)
 bpy.ops.render.render(animation=True)
 
 print("Rendering Complete!")
-print(f"Output saved to: {bpy.context.scene.render.filepath}")
+
+# Debug: Check what files were actually created
+if transparency == "transparent":
+    print("Checking for generated PNG files...")
+    import glob
+    png_pattern = os.path.join(output_dir, "*.png")
+    png_files = glob.glob(png_pattern)
+    print(f"Found {len(png_files)} PNG files:")
+    for png_file in png_files[:5]:  # Show first 5 files
+        print(f"  - {os.path.basename(png_file)}")
+    if len(png_files) > 5:
+        print(f"  ... and {len(png_files) - 5} more")
+
+# Convert PNG sequence to WEBM if transparency was requested
+if transparency == "transparent":
+    if len(png_files) > 0:
+        print("Converting PNG sequence to transparent WEBM...")
+        success = convert_png_to_webm(output_dir, fps=bpy.context.scene.render.fps)
+        if success:
+            print("Conversion completed successfully!")
+        else:
+            print("Conversion failed. PNG sequence files are available in:", output_dir)
+    else:
+        print("No PNG files found - skipping conversion")
+        print(f"Expected files at: {png_pattern}")
+else:
+    print(f"Output saved to: {bpy.context.scene.render.filepath}")
+
 print(f"Total objects processed: {len(imported_objs)}")
 print(f"Materials created: {len(materials)}")
